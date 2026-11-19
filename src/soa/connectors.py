@@ -50,7 +50,9 @@ class FileConnector:
 
     def send(self, payload: Any, **kwargs: Any) -> Result:
         if isinstance(payload, str):
-            method = kwargs.get("method", "read")
+            # pop: forwarding "method" twice raises "multiple values for
+            # argument 'method'" in call().
+            method = kwargs.pop("method", "read")
             return self.call(method, path=payload, **kwargs)
         if isinstance(payload, dict):
             data = {**payload, **kwargs}

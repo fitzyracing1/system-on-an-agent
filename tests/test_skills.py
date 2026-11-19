@@ -51,6 +51,22 @@ def test_positional_text_fallback():
     assert library.run("shout", text="hey").data == "HEY"
 
 
+def test_type_error_inside_a_handler_is_not_mistaken_for_a_signature():
+    def broken(**kwargs):
+        raise TypeError("handler bug")
+
+    library = SkillLibrary()
+    library.register(Skill("broken", "raises", broken))
+    with pytest.raises(TypeError, match="handler bug"):
+        library.run("broken", text="x")
+
+
+def test_undeclared_kwargs_are_not_forwarded_to_a_narrow_handler():
+    library = SkillLibrary()
+    library.register(Skill("ping", "no arguments", lambda: "pong"))
+    assert library.run("ping", text="ignored").data == "pong"
+
+
 def test_builtin_skill_names():
     names = {skill.name for skill in builtin_skills()}
     assert names == {"echo", "remember", "recall", "read_file", "write_file"}

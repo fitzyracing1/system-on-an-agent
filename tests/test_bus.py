@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from soa.bus import Bus
 from soa.connectors import ConnectorRegistry, EchoConnector, FileConnector
 from soa.memory import Memory
 from soa.skills import Skill, SkillLibrary, builtin_skills
-from soa.types import Message
+from soa.types import Message, Result
 
 
 def make_bus(tmp_path: Path | None = None) -> Bus:
@@ -113,3 +115,57 @@ def test_builtin_skill_expansion_for_memory_and_files(tmp_path: Path):
     )
     read = bus.dispatch(Message("skill", "run", {"name": "read_file", "path": "a.txt"}))
     assert read.data == "z"
+
+
+def test_connector_is_called_once_when_it_raises_type_error(tmp_path: Path):
+    class Fragile:
+        name = "fragile"
+        kind = "test"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def send(self, payload, **kwargs):
+            self.calls += 1
+            raise TypeError("real bug inside the connector")
+
+    connector = Fragile()
+    bus = Bus(Memory(), SkillLibrary(), ConnectorRegistry([connector]))
+    with pytest.raises(TypeError, match="real bug"):
+        bus.dispatch_step("connector.send", {"connector": "fragile", "payload": "x"})
+    assert connector.calls == 1
+
+
+def test_named_connector_keeps_the_rest_of_the_payload(tmp_path: Path):
+    class Recorder:
+        name = "recorder"
+        kind = "test"
+
+        def __init__(self) -> None:
+            self.seen: dict = {}
+
+        def send(self, payload, **kwargs):
+            self.seen = kwargs
+            return Result(ok=True, data=payload)
+
+    recorder = Recorder()
+    bus = Bus(Memory(), SkillLibrary(), ConnectorRegistry([recorder]))
+    bus.dispatch_step(
+        "connector.send", {"connector": "recorder", "name": "a.txt", "payload": "x"}
+    )
+    assert recorder.seen == {"name": "a.txt"}
+
+
+def test_connector_without_kwargs_still_accepts_extra_payload(tmp_path: Path):
+    class Narrow:
+        name = "narrow"
+        kind = "test"
+
+        def send(self, payload):
+            return Result(ok=True, data=payload)
+
+    bus = Bus(Memory(), SkillLibrary(), ConnectorRegistry([Narrow()]))  # type: ignore[list-item]
+    result = bus.dispatch_step(
+        "connector.send", {"connector": "narrow", "payload": "x", "unused": 1}
+    )
+    assert result.data == "x"

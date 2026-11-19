@@ -2,13 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Any
+import inspect
+from typing import Any, Callable
 
 from soa.addons.loader import AddonLoader
 from soa.connectors import ConnectorRegistry
 from soa.memory import Memory
 from soa.skills import SkillLibrary
 from soa.types import Message, Result
+
+
+def _invoke(fn: Callable[..., Result], body: Any, kwargs: dict[str, Any]) -> Result:
+    """Call a connector with only the keyword arguments it declares.
+
+    The call shape is decided *before* the call, so a TypeError raised inside
+    the connector body is never mistaken for a signature mismatch (which used
+    to make the bus call the connector twice and leak the exception).
+    """
+    try:
+        parameters = inspect.signature(fn).parameters
+    except (TypeError, ValueError):  # builtins and C callables
+        return fn(body, **kwargs)
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+        return fn(body, **kwargs)
+    accepted = {key: value for key, value in kwargs.items() if key in parameters}
+    return fn(body, **accepted)
 
 
 class Bus:
@@ -109,7 +127,11 @@ class Bus:
     def _connector(self, message: Message) -> Result:
         action = message.action
         payload = dict(message.payload)
-        name = payload.pop("connector", payload.pop("name", None))
+        # Both pops are explicit: `payload.pop("connector", payload.pop("name"))`
+        # would evaluate the default eagerly and drop "name" either way.
+        name = payload.pop("connector", None)
+        if name is None:
+            name = payload.pop("name", None)
         if not name:
             return Result(ok=False, error="connector name is required", action=action)
         try:
@@ -118,15 +140,12 @@ class Bus:
             return Result(ok=False, error=str(exc).strip("\"'"), action=action)
         if action == "send":
             body = payload.pop("payload") if "payload" in payload else payload
-            try:
-                return connector.send(body, **payload)
-            except TypeError:
-                return connector.send(body)
+            return _invoke(connector.send, body, payload)
         if action == "call":
             method = payload.pop("method", "send")
             if hasattr(connector, "call"):
                 return connector.call(method, **payload)  # type: ignore[no-any-return]
-            return connector.send(payload, method=method)
+            return _invoke(connector.send, payload, {"method": method, **payload})
         if action == "list":
             return Result(ok=True, data=self.connectors.names(), action="connector.list")
         return Result(ok=False, error=f"unknown connector action: {action}", action=action)
