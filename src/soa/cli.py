@@ -10,6 +10,7 @@ from typing import Sequence
 
 from soa import __version__
 from soa.addons.loader import AddonError, AddonLoader
+from soa.memory import LongTermMemory, Memory
 from soa.system import System
 
 
@@ -31,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="DIR",
         help="Root directory for the local file connector (default: current directory).",
+    )
+    parser.add_argument(
+        "--memory",
+        default=None,
+        metavar="FILE",
+        help="Persist long-term memory to this JSON file (default: in-process only).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -58,7 +65,10 @@ def _system_from_args(args: argparse.Namespace) -> System:
     for path in args.addon:
         addons.load_from_path(path)
     file_root = Path(args.file_root) if args.file_root else Path.cwd()
-    return System(addons=addons, file_root=file_root)
+    memory = None
+    if args.memory:
+        memory = Memory(long_term=LongTermMemory(Path(args.memory)))
+    return System(memory=memory, addons=addons, file_root=file_root)
 
 
 def _print_run(report, *, as_json: bool, out) -> int:
@@ -73,6 +83,8 @@ def _print_run(report, *, as_json: bool, out) -> int:
     for index, step in enumerate(report.plan.steps, start=1):
         out.write(f"  {index}. {step.description or step.action}\n")
     out.write(f"ok: {str(report.ok).lower()}\n")
+    if report.skipped:
+        out.write(f"skipped: {report.skipped} step(s) after the failure\n")
     if report.output:
         out.write(f"output: {report.output}\n")
     elif not report.ok:

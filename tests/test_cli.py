@@ -85,3 +85,20 @@ def test_system_writes_and_reads_a_file(tmp_path: Path):
     assert report.ok is True
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
     assert report.results[-1].data == "hello"
+
+
+def test_memory_flag_persists_facts_between_runs(tmp_path: Path):
+    store = tmp_path / "memory.json"
+    code, out, err = run_cli("--memory", str(store), "run", "remember rivers flow")
+    assert code == 0
+    assert store.exists()
+    code, out, err = run_cli("--memory", str(store), "run", "recall rivers")
+    assert code == 0
+    assert "rivers flow" in out
+
+
+def test_failed_run_reports_the_steps_it_skipped(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    code, out, err = run_cli("run", "read missing.txt then echo never")
+    assert code == 1
+    assert "skipped: 1 step(s)" in out

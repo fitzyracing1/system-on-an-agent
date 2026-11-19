@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -86,11 +87,41 @@ class LongTermMemory:
 
     def _load(self) -> None:
         assert self._path is not None
-        raw = json.loads(self._path.read_text(encoding="utf-8"))
-        self._facts = [
-            Fact(text=item["text"], tags=tuple(item.get("tags") or ()))
-            for item in raw
-        ]
+        try:
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            # A truncated or hand-edited file must not make the whole system
+            # unconstructible; start empty and say so.
+            warnings.warn(
+                f"ignoring unreadable memory file {self._path}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._facts = []
+            return
+        if not isinstance(raw, list):
+            warnings.warn(
+                f"ignoring memory file {self._path}: expected a JSON array",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._facts = []
+            return
+        facts: list[Fact] = []
+        skipped = 0
+        for item in raw:
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str):
+                skipped += 1
+                continue
+            facts.append(Fact(text=item["text"], tags=tuple(item.get("tags") or ())))
+        if skipped:
+            warnings.warn(
+                f"skipped {skipped} malformed entr{'y' if skipped == 1 else 'ies'} "
+                f"in memory file {self._path}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        self._facts = facts
 
     def _save(self) -> None:
         if self._path is None:
