@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "system-on-an-agent": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/fitzyracing1/system-on-an-agent",
+        "system-on-an-agent",
+        "mcp"
+      ]
+    }
+  }
+}

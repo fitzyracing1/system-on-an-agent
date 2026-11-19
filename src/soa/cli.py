@@ -5,18 +5,21 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from soa import __version__
 from soa.addons.loader import AddonError, AddonLoader
+from soa.memory import LongTermMemory, Memory
 from soa.system import System
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="soa",
-        description="System on an Agent: run a goal through the planner, memory, skills, and connectors.",
+        description=(
+            "System on an Agent: run a goal through the planner, memory, skills, and connectors."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"soa {__version__}")
     parser.add_argument(
@@ -31,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="DIR",
         help="Root directory for the local file connector (default: current directory).",
+    )
+    parser.add_argument(
+        "--memory-file",
+        default=None,
+        metavar="PATH",
+        help="Persist long-term memory as JSON at PATH (default: in memory only).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -50,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     connectors_sub = connectors_cmd.add_subparsers(dest="connectors_command", required=True)
     connectors_sub.add_parser("list", help="List registered connectors.")
 
+    sub.add_parser(
+        "mcp",
+        help="Serve the system as a Model Context Protocol (MCP) server over stdio.",
+    )
+
     return parser
 
 
@@ -58,7 +72,8 @@ def _system_from_args(args: argparse.Namespace) -> System:
     for path in args.addon:
         addons.load_from_path(path)
     file_root = Path(args.file_root) if args.file_root else Path.cwd()
-    return System(addons=addons, file_root=file_root)
+    memory = Memory(long_term=LongTermMemory(args.memory_file)) if args.memory_file else None
+    return System(addons=addons, file_root=file_root, memory=memory)
 
 
 def _print_run(report, *, as_json: bool, out) -> int:
@@ -95,6 +110,10 @@ def main(argv: Sequence[str] | None = None, out=None, err=None) -> int:
     except SystemExit as exc:  # argparse --help / --version / usage
         return int(exc.code or 0)
 
+    if args.command == "mcp":
+        from soa.mcp_server import serve
+
+        return serve(system)
     if args.command == "run":
         report = system.run(args.goal)
         return _print_run(report, as_json=args.json, out=out)

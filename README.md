@@ -1,5 +1,7 @@
 # System on an Agent
 
+<!-- mcp-name: io.github.fitzyracing1/system-on-an-agent -->
+
 A system on a chip puts a CPU, memory, I/O, and a bus on one piece of silicon. A **system on an agent** puts the same parts into one agent:
 
 | System on a Chip | System on an Agent |
@@ -60,6 +62,98 @@ pytest
 - `read path/to/file` and `write hello to path/to/file` — file connector
 - `list skills` / `list connectors`
 - Join steps with `then`: `echo hi then remember hi was said`
+
+## Use as an MCP server
+
+`soa mcp` (or `system-on-an-agent mcp`) serves the system over the Model Context Protocol on stdio. The server is built into the package: it needs no extra dependencies and opens no network sockets.
+
+| Tool | What it does |
+| --- | --- |
+| `plan_goal` | Plan a goal with the rule-based planner and return the steps without running them. |
+| `run_goal` | Plan and run a goal on the bus; returns the plan, each step result, and the output. |
+| `memory_remember` | Store a fact (with optional tags) in long-term memory. |
+| `memory_recall` | Look up facts by substring; an empty query returns all facts. |
+| `list_skills` | List the skill library with descriptions and parameters. |
+| `run_skill` | Run one named skill through the bus, e.g. `echo` with `{"text": "hi"}`. |
+| `list_connectors` | List the registered connectors (`echo`, `file`). |
+
+Options go before `mcp`:
+
+- `--file-root DIR` confines the file connector to `DIR` (default: the working directory). Paths that escape it fail.
+- `--memory-file PATH` persists long-term memory as JSON at `PATH` (default: in memory for the session).
+- `--addon PATH` loads an optional add-on, as with `soa run`.
+
+### Connect it to an MCP client
+
+Run it straight from GitHub with [uv](https://docs.astral.sh/uv/):
+
+```json
+{
+  "mcpServers": {
+    "system-on-an-agent": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/fitzyracing1/system-on-an-agent",
+        "system-on-an-agent",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+Or install it into a Python 3.10+ environment and point the client at the script:
+
+```bash
+python -m pip install "git+https://github.com/fitzyracing1/system-on-an-agent"
+```
+
+```json
+{
+  "mcpServers": {
+    "system-on-an-agent": {
+      "command": "system-on-an-agent",
+      "args": ["--file-root", "/path/to/workdir", "--memory-file", "/path/to/memory.json", "mcp"]
+    }
+  }
+}
+```
+
+This repository is also a Cursor plugin: [`.cursor-plugin/plugin.json`](.cursor-plugin/plugin.json) points at [`mcp.json`](mcp.json), the [skill](skills/system-on-an-agent/SKILL.md), and the [logo](assets/logo.svg). [`server.json`](server.json) describes the server in the [MCP Registry](https://github.com/modelcontextprotocol/registry) format.
+
+### Test it locally
+
+```bash
+python -m pip install -e ".[dev]"   # adds pytest, ruff, and the official MCP Python SDK
+ruff check src tests
+pytest                              # tests/test_mcp_client.py starts the server and calls every tool
+```
+
+## Submitting to the xAI marketplace
+
+The [Submit a plugin](https://x.ai/bot/marketplace/submit-a-plugin) form lists plugins for Grok Bot, Cursor, and Grok (coming soon). It takes an MCP server URL or a **public GitHub repository**, which this repository is. The form does not publish a manifest spec, so this repo follows the Cursor plugin format (`.cursor-plugin/plugin.json` + `mcp.json`) and MCP Registry `server.json` conventions. That is an assumption to confirm during review.
+
+Done in the repo:
+
+- [x] Working stdio MCP server with seven tools, tested through the official MCP client
+- [x] Cursor plugin manifest, `mcp.json`, skill, and a square logo (`assets/logo.svg`, `assets/logo.png`)
+- [x] `server.json` for the MCP Registry
+- [x] MIT license, no secrets or required environment variables
+
+Needs a person:
+
+- [ ] **First and last name** of the submitter
+- [ ] **Work email.** The form asks for a work email, so a personal Gmail may not pass review.
+- [ ] **Organization name** and a unique lowercase **organization handle** (no spaces)
+- [ ] **Website URL** (optional), e.g. `https://fitzyracing1.github.io/system-on-an-agent/`
+- [ ] **Logotype URL**: a 1:1 SVG or PNG with a background plate. After this branch merges: `https://raw.githubusercontent.com/fitzyracing1/system-on-an-agent/main/assets/logo.png`
+- [ ] Pick where to be listed: **Grok Bot**, **Cursor**, and/or **Grok** (coming soon)
+- [ ] **MCP Server URL or Public GitHub Repository**: `https://github.com/fitzyracing1/system-on-an-agent`
+- [ ] **Brief description** and **testing instructions** (for example: add the `mcp.json` entry above, call `list_skills`, then `run_goal` with `echo hello then remember hello was said`)
+- [ ] Test the plugin locally and in-app, then tick the box confirming it works
+- [ ] Read and accept the [Publisher Terms](https://cursor.com/marketplace-publisher-terms)
+- [ ] Optional: publish `system-on-an-agent` to PyPI and then `server.json` to the MCP Registry (`mcp-publisher`), which needs PyPI and GitHub sign-in
 
 ## Optional add-ons
 

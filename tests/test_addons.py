@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from soa.addons import AddonError, AddonLoader, AddonManifest, HookContext, load_addon
-from soa.planner import Plan, Step
+from soa.planner import Step
 from soa.system import System
 
 

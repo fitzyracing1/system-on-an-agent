@@ -66,7 +66,8 @@ class FileConnector:
                 path = self.write(kwargs["path"], kwargs.get("content", ""))
                 return Result(ok=True, data=str(path), action="connector.file.write")
             if method in {"list", "ls"}:
-                return Result(ok=True, data=self.list(kwargs.get("path", ".")), action="connector.file.list")
+                listing = self.list(kwargs.get("path", "."))
+                return Result(ok=True, data=listing, action="connector.file.list")
         except (OSError, FileConnectorError, KeyError) as exc:
             return Result(ok=False, error=str(exc), action=f"connector.file.{method}")
         return Result(ok=False, error=f"unknown file method: {method}")

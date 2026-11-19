@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Joshua Almeida" }]
 requires-python = ">=3.10"
-keywords = ["agent", "planner", "memory", "skills", "connectors"]
+keywords = ["agent", "planner", "memory", "skills", "connectors", "mcp", "mcp-server"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
@@ -23,10 +23,11 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "ruff>=0.6", "mcp>=1.2"]
 
 [project.scripts]
 soa = "soa.cli:main"
+system-on-an-agent = "soa.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/fitzyracing1/system-on-an-agent"
@@ -40,3 +41,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

@@ -1,0 +1,16 @@
+{
+  "name": "system-on-an-agent",
+  "displayName": "System on an Agent",
+  "version": "0.1.0",
+  "description": "A complete system in one agent: a rule-based planner, memory, skills, and file and echo connectors, served as a local stdio MCP server.",
+  "author": {
+    "name": "Joshua Almeida"
+  },
+  "homepage": "https://fitzyracing1.github.io/system-on-an-agent/",
+  "repository": "https://github.com/fitzyracing1/system-on-an-agent",
+  "license": "MIT",
+  "keywords": ["agent", "planner", "memory", "skills", "connectors", "mcp"],
+  "logo": "assets/logo.svg",
+  "skills": "skills/",
+  "mcpServers": "mcp.json"
+}
