@@ -187,11 +187,15 @@ def test_duplicate_addon_names_are_rejected():
         manifest = AddonManifest(name="same", version="0", hooks=())
 
     loader = AddonLoader()
-    loader.add(Named())
+    first = Named()
+    loader.add(first)
     with pytest.raises(AddonError, match="already loaded"):
         loader.add(Named())
-    loader.add(Named(), overwrite=True)
-    assert loader.names() == ["same", "same"]
+    replacement = Named()
+    loader.add(replacement, overwrite=True)
+    # overwrite=True REPLACES in place: one entry, so only one set of hooks fires.
+    assert loader.names() == ["same"]
+    assert loader.list() == [replacement]
 
 
 def test_failed_import_leaves_no_module_behind(tmp_path: Path):
@@ -218,3 +222,25 @@ def test_same_file_is_imported_only_once(tmp_path: Path):
     second = load_addon(path)
     assert first is not second
     assert first.token == second.token
+
+
+def test_overwrite_replaces_instead_of_double_registering(tmp_path: Path):
+    calls: list[str] = []
+
+    def make(tag: str):
+        class Counter:
+            manifest = AddonManifest(name="twin", version="0", hooks=("before_step",))
+
+            def before_step(self, step, context):
+                calls.append(tag)
+                return None
+
+        return Counter()
+
+    loader = AddonLoader()
+    loader.add(make("first"))
+    loader.add(make("second"), overwrite=True)
+    assert loader.names() == ["twin"]
+    System(addons=loader, file_root=tmp_path).run("echo hi")
+    # Only the replacement's hook fires: no duplicated "twin" add-on.
+    assert calls == ["second"]

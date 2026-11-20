@@ -113,7 +113,19 @@ class LongTermMemory:
             if not isinstance(item, dict) or not isinstance(item.get("text"), str):
                 skipped += 1
                 continue
-            facts.append(Fact(text=item["text"], tags=tuple(item.get("tags") or ())))
+            tags = item.get("tags")
+            if tags is None:
+                tag_tuple: tuple[str, ...] = ()
+            elif isinstance(tags, str):
+                tag_tuple = (tags,)
+            elif isinstance(tags, (list, tuple)) and all(isinstance(tag, str) for tag in tags):
+                tag_tuple = tuple(tags)
+            else:
+                # e.g. "tags": 123 — iterating it raises TypeError out of the
+                # constructor; treat the entry as malformed instead.
+                skipped += 1
+                continue
+            facts.append(Fact(text=item["text"], tags=tag_tuple))
         if skipped:
             warnings.warn(
                 f"skipped {skipped} malformed entr{'y' if skipped == 1 else 'ies'} "

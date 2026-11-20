@@ -55,8 +55,16 @@ class AddonLoader:
     def add(self, addon: Any, *, overwrite: bool = False) -> Any:
         _validate(addon)
         name = addon.manifest.name
-        if not overwrite and name in self.names():
-            raise AddonError(f"add-on already loaded: {name}")
+        if name in self.names():
+            if not overwrite:
+                raise AddonError(f"add-on already loaded: {name}")
+            # overwrite=True REPLACES the loaded add-on in place, matching
+            # SkillLibrary/ConnectorRegistry: appending a second add-on with the
+            # same name would fire both sets of hooks.
+            for index, loaded in enumerate(self._addons):
+                if loaded.manifest.name == name:
+                    self._addons[index] = addon
+                    return addon
         self._addons.append(addon)
         return addon
 

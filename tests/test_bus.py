@@ -169,3 +169,12 @@ def test_connector_without_kwargs_still_accepts_extra_payload(tmp_path: Path):
         "connector.send", {"connector": "narrow", "payload": "x", "unused": 1}
     )
     assert result.data == "x"
+
+
+def test_bus_keeps_an_injected_empty_addon_loader():
+    from soa.addons import AddonLoader
+
+    loader = AddonLoader()
+    assert not loader  # empty loader is falsy: `addons or AddonLoader()` used to replace it
+    bus = Bus(Memory(), SkillLibrary(), ConnectorRegistry([]), addons=loader)
+    assert bus.addons is loader

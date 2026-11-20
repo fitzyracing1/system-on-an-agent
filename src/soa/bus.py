@@ -42,7 +42,10 @@ class Bus:
         self.memory = memory
         self.skills = skills
         self.connectors = connectors
-        self.addons = addons or AddonLoader()
+        # AddonLoader defines __len__, so an injected-but-empty loader is falsy.
+        # Defaulting with `addons or AddonLoader()` silently replaced it (same bug
+        # as System()); only a missing loader is defaulted here.
+        self.addons = AddonLoader() if addons is None else addons
 
     def dispatch(self, message: Message) -> Result:
         channel = message.channel

@@ -77,3 +77,17 @@ def test_malformed_entries_are_skipped(tmp_path: Path):
     with pytest.warns(RuntimeWarning, match="malformed"):
         memory = LongTermMemory(path)
     assert [fact.text for fact in memory.all_facts()] == ["kept"]
+
+
+def test_non_iterable_tags_are_skipped_not_fatal(tmp_path: Path):
+    # "tags": 123 used to raise TypeError: 'int' object is not iterable out of __init__.
+    path = tmp_path / "mem.json"
+    path.write_text(
+        '[{"text": "bad", "tags": 123}, {"text": "kept", "tags": ["a", "b"]},'
+        ' {"text": "single", "tags": "x"}]',
+        encoding="utf-8",
+    )
+    with pytest.warns(RuntimeWarning, match="malformed"):
+        memory = LongTermMemory(path)
+    facts = {fact.text: fact.tags for fact in memory.all_facts()}
+    assert facts == {"kept": ("a", "b"), "single": ("x",)}
