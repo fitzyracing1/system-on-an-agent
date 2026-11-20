@@ -6,7 +6,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable
+from typing import Any
 
 from soa.addons.interface import KNOWN_HOOKS, AddonManifest
 
@@ -24,14 +24,47 @@ def _has_hook(obj: Any, name: str) -> bool:
     return callable(getattr(obj, name, None))
 
 
+# What each hook must hand back when it returns something other than None.
+_EXPECTED_SHAPES: dict[str, tuple[tuple[str, ...], str]] = {
+    "before_plan": (("steps",), "a plan"),
+    "after_plan": (("goal", "results"), "a run report"),
+    "before_step": (("action",), "a step"),
+    "after_step": (("ok", "error"), "a result"),
+}
+
+
+def _check_return(hook: str, value: Any, addon: Any) -> None:
+    """Reject a hook result the core cannot use, naming the offending add-on."""
+    attributes, expected = _EXPECTED_SHAPES[hook]
+    if all(hasattr(value, attribute) for attribute in attributes):
+        return
+    manifest = getattr(addon, "manifest", None)
+    name = getattr(manifest, "name", type(addon).__name__)
+    raise AddonError(
+        f"add-on {name!r} returned {value!r} from {hook}(); "
+        f"expected {expected} or None"
+    )
+
+
 class AddonLoader:
     """Discover and keep loaded add-ons, and fire their hooks."""
 
     def __init__(self) -> None:
         self._addons: list[Any] = []
 
-    def add(self, addon: Any) -> Any:
+    def add(self, addon: Any, *, overwrite: bool = False) -> Any:
         _validate(addon)
+        name = addon.manifest.name
+        if name in self.names():
+            if not overwrite:
+                raise AddonError(f"add-on already loaded: {name}")
+            # overwrite=True REPLACES the loaded add-on in place, matching
+            # SkillLibrary/ConnectorRegistry: appending a second add-on with the
+            # same name would fire both sets of hooks.
+            for index, loaded in enumerate(self._addons):
+                if loaded.manifest.name == name:
+                    self._addons[index] = addon
+                    return addon
         self._addons.append(addon)
         return addon
 
@@ -85,6 +118,7 @@ class AddonLoader:
                 continue
             result = fn(*values)
             if result is not None:
+                _check_return(hook, result, addon)
                 values[index] = result
         return values[index]
 
@@ -113,13 +147,23 @@ def load_addon(path: str | Path) -> Any:
                 f"add-on directory needs soa_addon.py or addon.py: {path}"
             )
     module = _import_path(target)
-    addon = _instantiate(module)
-    _validate(addon)
+    try:
+        addon = _instantiate(module)
+        _validate(addon)
+    except Exception:
+        # A failed load must not leave a half-initialised module registered.
+        sys.modules.pop(module.__name__, None)
+        raise
     return addon
 
 
 def _import_path(file_path: Path) -> ModuleType:
     module_name = f"soa_addon_{file_path.stem}_{abs(hash(file_path.resolve()))}"
+    cached = sys.modules.get(module_name)
+    if cached is not None:
+        # Same file, same module: re-executing it would only rebuild state
+        # that the previous load already left behind in sys.modules.
+        return cached
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None or spec.loader is None:
         raise AddonError(f"cannot import add-on: {file_path}")
@@ -128,6 +172,7 @@ def _import_path(file_path: Path) -> ModuleType:
     try:
         spec.loader.exec_module(module)
     except Exception as exc:  # noqa: BLE001 - surface import errors as AddonError
+        sys.modules.pop(module_name, None)
         raise AddonError(f"add-on failed to import: {exc}") from exc
     return module
 
@@ -155,7 +200,3 @@ def _validate(addon: Any) -> None:
             f"add-on {manifest.name!r} declares hooks it does not implement: "
             + ", ".join(missing)
         )
-
-
-def maybe_paths(paths: Iterable[str | Path] | None) -> list[Path]:
-    return [Path(p) for p in (paths or [])]

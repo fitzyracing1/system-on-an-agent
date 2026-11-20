@@ -67,6 +67,10 @@ _LIST_CONNECTORS = re.compile(
 )
 _RUN_SKILL = re.compile(r"^(?:run|use)\s+(?:skill\s+)?(\S+)(?:\s+(.*))?$", re.IGNORECASE)
 
+# Channels the bus actually routes. A plan that names anything else can only
+# fail at dispatch time, so the planner rejects it up front.
+_KNOWN_ACTION_PREFIXES = ("memory.", "skill.", "connector.", "system.")
+
 
 class Planner:
     """Turn a goal into a plan and (optionally) help execute it."""
@@ -192,7 +196,9 @@ class Planner:
         try:
             raw = self.llm.complete(f"Goal: {goal}", system=system)
             data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        except Exception:  # noqa: BLE001 - any provider failure means "fall back"
+            # A provider that raises (network down, timeout, rate limit, SDK
+            # error) is exactly the case the rule-based planner exists for.
             return None
         if not isinstance(data, list) or not data:
             return None
@@ -200,14 +206,17 @@ class Planner:
         for item in data:
             if not isinstance(item, dict) or "action" not in item:
                 return None
+            action = str(item["action"])
+            if not action.startswith(_KNOWN_ACTION_PREFIXES):
+                return None
             args = item.get("args") or {}
             if not isinstance(args, dict):
                 return None
             steps.append(
                 Step(
-                    action=str(item["action"]),
+                    action=action,
                     args=args,
-                    description=str(item.get("description") or item["action"]),
+                    description=str(item.get("description") or action),
                 )
             )
         return Plan(goal=goal, steps=steps, source="llm")

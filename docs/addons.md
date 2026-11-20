@@ -24,6 +24,8 @@ Known hooks:
 
 Returning `None` leaves the current value unchanged. `context` is a `HookContext` with the original `goal` and an `extras` dict for add-on state.
 
+Returning anything else the core cannot use (for example a plain dict from `before_step`) raises `AddonError` naming the add-on, instead of failing later inside the core.
+
 ## Loading
 
 An add-on is a Python file, or a directory containing `soa_addon.py` or `addon.py`. The module must define one of:
@@ -35,6 +37,8 @@ An add-on is a Python file, or a directory containing `soa_addon.py` or `addon.p
 ```bash
 soa --addon path/to/addon.py run "echo hello"
 ```
+
+Two add-ons declaring the same manifest `name` are rejected (`add-on already loaded`) unless the loader is called with `overwrite=True`.
 
 Entry points in the `soa.addons` group are also reserved for later discovery; none ship with the core.
 

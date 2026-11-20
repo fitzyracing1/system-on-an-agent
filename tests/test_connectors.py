@@ -71,3 +71,12 @@ def test_connector_registry():
     assert len(registry) == 2
     with pytest.raises(KeyError, match="unknown connector"):
         registry.get("missing")
+
+
+def test_file_connector_send_string_with_method(tmp_path: Path):
+    files = FileConnector(root=tmp_path)
+    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
+    assert files.send("a.txt", method="read").data == "A"
+    written = files.send("b.txt", method="write", content="B")
+    assert written.ok is True
+    assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "B"

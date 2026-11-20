@@ -52,7 +52,14 @@ soa run "echo hello from system on an agent"
 pytest
 ```
 
-`soa run` prints the goal, the plan, and the output. Add `--json` for a machine-readable report. Built-in goal forms include:
+`soa run` prints the goal, the plan, and the output. Add `--json` for a machine-readable report. Long-term memory lives in the process unless you point it at a file, so `--memory` makes facts survive between runs:
+
+```
+soa --memory memory.json run "remember the sky is blue"
+soa --memory memory.json run "recall sky"
+```
+
+Built-in goal forms include:
 
 - `echo hello` / `say hello` — send text through the echo connector
 - `remember the sky is blue` — store a fact

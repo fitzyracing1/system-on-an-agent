@@ -135,3 +135,21 @@ def test_describe_uses_step_descriptions():
     planner = Planner()
     plan = planner.plan("echo hello")
     assert planner.describe(plan) == [plan.steps[0].description]
+
+
+class RaisingLLM(LLMProvider):
+    def complete(self, prompt: str, *, system: str | None = None) -> str:
+        raise ConnectionError("provider down")
+
+
+def test_raising_provider_falls_back_to_rules():
+    plan = Planner(llm=RaisingLLM()).plan("echo hello")
+    assert plan.source == "rules"
+    assert plan.steps[0].args["payload"] == "hello"
+
+
+def test_unknown_action_from_the_model_falls_back_to_rules():
+    llm = FakeLLM('[{"action": "shell.exec", "args": {"cmd": "rm -rf /"}}]')
+    plan = Planner(llm=llm).plan("echo hello")
+    assert plan.source == "rules"
+    assert plan.steps[0].args["payload"] == "hello"

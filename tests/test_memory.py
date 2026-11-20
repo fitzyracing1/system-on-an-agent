@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from soa.memory import LongTermMemory, Memory, WorkingMemory
 
 
@@ -57,3 +59,35 @@ def test_memory_facade_delegates():
     memory.remember("nights are dark")
     assert memory.working.get("step") == 1
     assert memory.recall("nights")[0].text == "nights are dark"
+
+
+def test_unreadable_memory_file_warns_and_starts_empty(tmp_path: Path):
+    path = tmp_path / "mem.json"
+    path.write_text("{not json", encoding="utf-8")
+    with pytest.warns(RuntimeWarning, match="unreadable memory file"):
+        memory = LongTermMemory(path)
+    assert len(memory) == 0
+    memory.remember("still works")
+    assert LongTermMemory(path).recall("works")[0].text == "still works"
+
+
+def test_malformed_entries_are_skipped(tmp_path: Path):
+    path = tmp_path / "mem.json"
+    path.write_text('[{"text": "kept"}, {"nope": 1}, "junk"]', encoding="utf-8")
+    with pytest.warns(RuntimeWarning, match="malformed"):
+        memory = LongTermMemory(path)
+    assert [fact.text for fact in memory.all_facts()] == ["kept"]
+
+
+def test_non_iterable_tags_are_skipped_not_fatal(tmp_path: Path):
+    # "tags": 123 used to raise TypeError: 'int' object is not iterable out of __init__.
+    path = tmp_path / "mem.json"
+    path.write_text(
+        '[{"text": "bad", "tags": 123}, {"text": "kept", "tags": ["a", "b"]},'
+        ' {"text": "single", "tags": "x"}]',
+        encoding="utf-8",
+    )
+    with pytest.warns(RuntimeWarning, match="malformed"):
+        memory = LongTermMemory(path)
+    facts = {fact.text: fact.tags for fact in memory.all_facts()}
+    assert facts == {"kept": ("a", "b"), "single": ("x",)}

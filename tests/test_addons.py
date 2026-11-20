@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -166,3 +167,80 @@ def test_hook_context_carries_the_goal():
     context = HookContext(goal="echo hi")
     assert context.goal == "echo hi"
     assert context.extras == {}
+
+
+def test_hook_returning_the_wrong_type_is_rejected(tmp_path: Path):
+    class Wrong:
+        manifest = AddonManifest(name="wrong", version="0", hooks=("before_step",))
+
+        def before_step(self, step, context):
+            return {"action": "system.noop"}
+
+    loader = AddonLoader()
+    loader.add(Wrong())
+    with pytest.raises(AddonError, match="from before_step"):
+        System(addons=loader, file_root=tmp_path).run("echo hi")
+
+
+def test_duplicate_addon_names_are_rejected():
+    class Named:
+        manifest = AddonManifest(name="same", version="0", hooks=())
+
+    loader = AddonLoader()
+    first = Named()
+    loader.add(first)
+    with pytest.raises(AddonError, match="already loaded"):
+        loader.add(Named())
+    replacement = Named()
+    loader.add(replacement, overwrite=True)
+    # overwrite=True REPLACES in place: one entry, so only one set of hooks fires.
+    assert loader.names() == ["same"]
+    assert loader.list() == [replacement]
+
+
+def test_failed_import_leaves_no_module_behind(tmp_path: Path):
+    path = tmp_path / "addon.py"
+    path.write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+    before = {name for name in sys.modules if name.startswith("soa_addon_addon_")}
+    with pytest.raises(AddonError, match="failed to import"):
+        load_addon(path)
+    after = {name for name in sys.modules if name.startswith("soa_addon_addon_")}
+    assert after == before
+
+
+def test_same_file_is_imported_only_once(tmp_path: Path):
+    path = tmp_path / "soa_addon.py"
+    path.write_text(
+        "from soa.addons import AddonManifest\n"
+        "import uuid\n"
+        "class Addon:\n"
+        "    manifest = AddonManifest(name='once', version='1', hooks=())\n"
+        "    token = uuid.uuid4().hex\n",
+        encoding="utf-8",
+    )
+    first = load_addon(path)
+    second = load_addon(path)
+    assert first is not second
+    assert first.token == second.token
+
+
+def test_overwrite_replaces_instead_of_double_registering(tmp_path: Path):
+    calls: list[str] = []
+
+    def make(tag: str):
+        class Counter:
+            manifest = AddonManifest(name="twin", version="0", hooks=("before_step",))
+
+            def before_step(self, step, context):
+                calls.append(tag)
+                return None
+
+        return Counter()
+
+    loader = AddonLoader()
+    loader.add(make("first"))
+    loader.add(make("second"), overwrite=True)
+    assert loader.names() == ["twin"]
+    System(addons=loader, file_root=tmp_path).run("echo hi")
+    # Only the replacement's hook fires: no duplicated "twin" add-on.
+    assert calls == ["second"]

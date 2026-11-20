@@ -2,12 +2,39 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from soa.types import Result
 
 SkillHandler = Callable[..., Any]
+
+
+def _invoke_handler(handler: SkillHandler, kwargs: dict[str, Any]) -> Any:
+    """Call a skill handler with the arguments it declares.
+
+    The call shape is decided before the call, so a TypeError raised *inside*
+    the handler is never mistaken for a signature mismatch. Handlers that take
+    a single positional parameter still get ``text`` positionally.
+    """
+    try:
+        parameters = inspect.signature(handler).parameters
+    except (TypeError, ValueError):  # builtins and C callables
+        return handler(**kwargs)
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+        return handler(**kwargs)
+    accepted = {key: value for key, value in kwargs.items() if key in parameters}
+    if not accepted and "text" in kwargs:
+        positional = [
+            p
+            for p in parameters.values()
+            if p.kind
+            in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        ]
+        if len(positional) == 1:
+            return handler(kwargs["text"])
+    return handler(**accepted)
 
 
 @dataclass(frozen=True)
@@ -56,14 +83,7 @@ class SkillLibrary:
 
     def run(self, name: str, **kwargs: Any) -> Result:
         skill = self.get(name)
-        try:
-            data = skill.handler(**kwargs)
-        except TypeError:
-            # Allow a positional "text" fallback for simple one-argument skills.
-            if "text" in kwargs and len(kwargs) == 1:
-                data = skill.handler(kwargs["text"])
-            else:
-                raise
+        data = _invoke_handler(skill.handler, kwargs)
         if isinstance(data, Result):
             return data
         return Result(ok=True, data=data, action=f"skill.{skill.name}")

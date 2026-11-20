@@ -26,6 +26,11 @@ class RunReport:
     ok: bool = True
 
     @property
+    def skipped(self) -> int:
+        """Planned steps that never ran because an earlier step failed."""
+        return max(0, len(self.plan.steps) - len(self.results))
+
+    @property
     def output(self) -> str:
         return result_output(self.results)
 
@@ -33,6 +38,7 @@ class RunReport:
         return {
             "goal": self.goal,
             "ok": self.ok,
+            "skipped": self.skipped,
             "source": self.plan.source,
             "steps": [
                 {
@@ -79,19 +85,24 @@ class System:
         llm: LLMProvider | None = None,
         file_root: str | Path | None = None,
     ) -> None:
-        self.memory = memory or Memory()
-        self.skills = skills or SkillLibrary()
+        # `x or Default()` is unsafe here: SkillLibrary, ConnectorRegistry and
+        # AddonLoader all define __len__, so an empty-but-configured instance is
+        # falsy and would be silently replaced by a fresh default.
+        self.memory = Memory() if memory is None else memory
+        self.skills = SkillLibrary() if skills is None else skills
         if skills is None:
             for skill in builtin_skills():
                 self.skills.register(skill)
-        self.connectors = connectors or ConnectorRegistry(
-            [
-                EchoConnector(),
-                FileConnector(root=Path(file_root) if file_root else Path.cwd()),
-            ]
-        )
-        self.addons = addons or AddonLoader()
-        self.planner = planner or Planner(llm=llm)
+        if connectors is None:
+            connectors = ConnectorRegistry(
+                [
+                    EchoConnector(),
+                    FileConnector(root=Path(file_root) if file_root else Path.cwd()),
+                ]
+            )
+        self.connectors = connectors
+        self.addons = AddonLoader() if addons is None else addons
+        self.planner = Planner(llm=llm) if planner is None else planner
         self.bus = Bus(self.memory, self.skills, self.connectors, self.addons)
 
     def run(self, goal: str) -> RunReport:
